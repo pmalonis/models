@@ -61,7 +61,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+import sys
 import numpy as np
 import os
 import tensorflow as tf
@@ -808,7 +808,7 @@ class LFADS(object):
           rates[t] = dist_params[t] = tf.exp(log_rates_clip) # rates feed back
           rates[t].set_shape([None, hps.dataset_dims[hps.dataset_names[0]]])
           loglikelihood_t = tf.subtract(Poisson(log_rates_clip).logp(data_t_bxd), 
-                                tf.nn.relu(log_rates_t - hps.clip_log_rates_max),
+                tf.nn.relu(log_rates_t - hps.clip_log_rates_max, name="clip_relu"),
                                 name="log_likelihood_rates")
 
         elif hps.output_dist == 'gaussian':
@@ -1388,6 +1388,7 @@ class LFADS(object):
             (i, train_step, tr_total_cost, ev_total_cost,
              tr_recon_cost, ev_recon_cost, tr_kl_cost, ev_kl_cost,
              l2_cost, kl_weight, l2_weight))
+      sys.stdout.flush()
 
       csv_outstr = "epoch,%d, step,%d, total,%.2f,%.2f, \
       recon,%.2f,%.2f, kl,%.2f,%.2f, l2,%.5f, \
