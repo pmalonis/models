@@ -796,7 +796,10 @@ class LFADS(object):
                             normalized=True, name="gen_2_fac")
       with tf.variable_scope("glm", reuse=True if t > 0 else None):
         if hps.output_dist == 'poisson':
-          log_rates_t = tf.matmul(factors[t], this_out_fac_W) + this_out_fac_b
+          log_rates_t = tf.add(tf.matmul(factors[t], this_out_fac_W, name='factors_times_readoutW'),
+                               this_out_fac_b, name="log_rates_from_factors")
+          if hps.clip_log_rates_max is not None:
+            log_rates_t = tf.minimum(log_rates_t, hps.clip_log_rates_max, name="clip_log_rates_from_factors")
           log_rates_t.set_shape([None, None])
           rates[t] = dist_params[t] = tf.exp(log_rates_t) # rates feed back
           rates[t].set_shape([None, hps.dataset_dims[hps.dataset_names[0]]])

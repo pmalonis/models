@@ -63,6 +63,7 @@ DO_TRAIN_READIN = True
 # Calibrated just above the average value for the rnn synthetic data.
 MAX_GRAD_NORM = 200.0
 CELL_CLIP_VALUE = 5.0
+CLIP_LOG_RATES_MAX = 15.0
 KEEP_PROB = 0.95
 TEMPORAL_SPIKE_JITTER_WIDTH = 0
 OUTPUT_DISTRIBUTION = 'poisson' # 'poisson' or 'gaussian'
@@ -316,6 +317,10 @@ flags.DEFINE_float("max_grad_norm", MAX_GRAD_NORM,
 # problems.
 flags.DEFINE_float("cell_clip_value", CELL_CLIP_VALUE,
                    "Max value recurrent cell can take before being clipped.")
+
+# This can prevent overflow in some cases where factors * readout becomes very large
+flags.DEFINE_float("clip_log_rates_max", CLIP_LOG_RATES_MAX,
+                   "Max value log rates predicted by factors before being clipped.")
 
 # This flag is used for an experiment where one sees if training a model with
 # many days data can be used to learn the dynamics from a held-out days data.
@@ -574,6 +579,7 @@ def build_hyperparameter_dict(flags):
   d['learning_rate_n_to_compare'] = flags.learning_rate_n_to_compare
   d['max_grad_norm'] = flags.max_grad_norm
   d['cell_clip_value'] = flags.cell_clip_value
+  d['clip_log_rates_max'] = flags.clip_log_rates_max
   d['do_train_io_only'] = flags.do_train_io_only
   d['do_train_encoder_only'] = flags.do_train_encoder_only
   d['do_reset_learning_rate'] = flags.do_reset_learning_rate
@@ -876,3 +882,4 @@ def main(_):
 
 if __name__ == "__main__":
     tf.app.run()
+
