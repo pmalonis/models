@@ -21,6 +21,8 @@ from lfads import LFADS
 import numpy as np
 import os
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
+from tensorflow.python.debug.lib.debug_data import InconvertibleTensorProto
 import re
 import utils
 import sys
@@ -94,6 +96,12 @@ IC_PRIOR_VAR_MIN = 0.1
 IC_PRIOR_VAR_SCALE = 0.1
 IC_PRIOR_VAR_MAX = 0.1
 IC_POST_VAR_MIN = 0.0001      # protection from KL blowing up
+
+TF_DEBUG_CLI = False
+TF_DEBUG_TENSORBOARD = False
+TF_DEBUG_TENSORBOARD_HOSTPORT = 'localhost:6064'
+DEBUG_VERBOSE = False
+DEBUG_REDUCE_TIMESTEPS_TO = None
 
 flags = tf.app.flags
 flags.DEFINE_string("kind", "train",
@@ -401,6 +409,12 @@ flags.DEFINE_integer("l2_start_step", L2_START_STEP,
 flags.DEFINE_integer("l2_increase_steps", L2_INCREASE_STEPS,
                      "Increase weight of l2 cost to avoid local minimum.")
 
+# DEBUGGING
+flags.DEFINE_boolean("tf_debug_cli", TF_DEBUG_CLI, "Whether to wrap tf.session in CLI tfdbg?")
+flags.DEFINE_boolean("tf_debug_tensorboard", TF_DEBUG_TENSORBOARD, "Whether to wrap tf.session in GUI Tensorboard debugger?")
+flags.DEFINE_string("tf_debug_tensorboard_hostport", TF_DEBUG_TENSORBOARD_HOSTPORT, "Host:Port of Tensorboard debugger")
+flags.DEFINE_boolean("debug_verbose", DEBUG_VERBOSE, "Whether to print verbose debugging information")
+flags.DEFINE_integer("debug_reduce_timesteps_to", DEBUG_REDUCE_TIMESTEPS_TO, "For debugging, artificially keep only this many timesteps to reduce graph size")
 FLAGS = flags.FLAGS
 
 
@@ -578,6 +592,10 @@ def build_hyperparameter_dict(flags):
   d['l2_start_step'] = flags.l2_start_step
   d['l2_increase_steps'] = flags.l2_increase_steps
 
+  # Debugging
+  d['debug_verbose'] = flags.debug_verbose
+  d['debug_reduce_timesteps_to'] = flags.debug_reduce_timesteps_to
+
   return d
 
 
@@ -716,7 +734,7 @@ def clean_data_dict(data_dict):
   return data_dict
 
 
-def load_datasets(data_dir, data_filename_stem):
+def load_datasets(data_dir, data_filename_stem, reduce_timesteps_to=None):
   """Load the datasets from a specified directory.
 
   Example files look like
@@ -731,13 +749,14 @@ def load_datasets(data_dir, data_filename_stem):
   Args:
     data_dir: The directory from which to load the datasets.
     data_filename_stem: The stem of the filename for the datasets.
+    reduce_timesteps_to: For debugging, keep only first N timesteps
 
   Returns:
     datasets: a dataset dictionary, with one name->data dictionary pair for
     each dataset file.
   """
   print("Reading data from ", data_dir)
-  datasets = utils.read_datasets(data_dir, data_filename_stem)
+  datasets = utils.read_datasets(data_dir, data_filename_stem, reduce_timesteps_to)
   for k, data_dict in datasets.items():
     datasets[k] = clean_data_dict(data_dict)
 
@@ -756,8 +775,40 @@ def load_datasets(data_dir, data_filename_stem):
   return datasets
 
 
+def has_bad_value(datum, tensor):
+  """A predicate for whether a tensor consists of any large numerical values.
+
+  Bad numerical values have absolute value > 1e8 or are inf or nan
+
+  Based on has_nan_or_inf in tensorflow/python/debug/lib/debug_data.py
+  The signature of this function follows the requirement of the method
+  `DebugDumpDir.find()`.
+  Args:
+    datum: (`DebugTensorDatum`) Datum metadata.
+    tensor: (`numpy.ndarray` or None) Value of the tensor. None represents
+      an uninitialized tensor.
+  Returns:
+    (`bool`) True if and only if tensor consists of any nan or inf values.
+  """
+
+  _ = datum  # Datum metadata is unused in this predicate.
+
+  if isinstance(tensor, InconvertibleTensorProto):
+    # Uninitialized tensor doesn't have bad numerical values.
+    # Also return False for data types that cannot be represented as numpy
+    # arrays.
+    return False
+  elif (np.issubdtype(tensor.dtype, np.floating) or
+        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.integer)):
+    return np.any(np.abs(tensor) >= 1e8) or np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
+  else:
+    return False
+
+
 def main(_):
   """Get this whole shindig off the ground."""
+
   d = build_hyperparameter_dict(FLAGS)
   hps = hps_dict_to_obj(d)    # hyper parameters
   kind = FLAGS.kind
@@ -766,7 +817,7 @@ def main(_):
   train_set = valid_set = None
   if kind in ["train", "posterior_sample_and_average", "posterior_push_mean",
               "prior_sample", "write_model_params"]:
-    datasets = load_datasets(hps.data_dir, hps.data_filename_stem)
+    datasets = load_datasets(hps.data_dir, hps.data_filename_stem, hps.debug_reduce_timesteps_to)
   else:
     raise ValueError('Kind {} is not supported.'.format(kind))
 
@@ -781,6 +832,7 @@ def main(_):
   # also store down the dimensionality of the data
   # - just pull from one set, required to be same for all sets
   hps.num_steps = datasets.values()[0]['num_steps']
+
   hps.ndatasets = len(hps.dataset_names)
 
   if hps.num_steps_for_gen_ic > hps.num_steps:
@@ -792,6 +844,18 @@ def main(_):
   if FLAGS.allow_gpu_growth:
     config.gpu_options.allow_growth = True
   sess = tf.Session(config=config)
+
+  if FLAGS.tf_debug_tensorboard:
+    print("Using Tensorboard GUI debugger at " + FLAGS.tf_debug_tensorboard_hostport)
+    sess = tf_debug.TensorBoardDebugWrapperSession(sess, FLAGS.tf_debug_tensorboard_hostport,
+                                                   send_traceback_and_source_code=False) # code is too large to send
+
+  elif FLAGS.tf_debug_cli:
+    print("Using CLI TF debugger")
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+    sess.add_tensor_filter("has_bad_value", has_bad_value)
+
   with sess.as_default():
     with tf.device(hps.device):
       if kind == "train":

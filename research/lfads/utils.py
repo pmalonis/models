@@ -202,11 +202,12 @@ def write_data(data_fname, data_dict, use_json=False, compression=None):
       raise
 
 
-def read_data(data_fname):
+def read_data(data_fname, reduce_timesteps_to=None):
   """ Read saved data in HDF5 format.
 
   Args:
     data_fname: The filename of the file from which to read the data.
+    reduce_timesteps_to: For debugging, keep only first N timesteps
   Returns:
     A dictionary whose keys will vary depending on dataset (but should
     always contain the keys 'train_data' and 'valid_data') and whose
@@ -216,6 +217,14 @@ def read_data(data_fname):
   try:
     with h5py.File(data_fname, 'r') as hf:
       data_dict = {k: np.array(v) for k, v in hf.items()}
+
+      if reduce_timesteps_to is not None:
+        keys = ['train_truth', 'train_ext_input', 'train_data',
+                'valid_truth', 'valid_ext_input', 'valid_data']
+        for k in keys:
+          if k in data_dict and data_dict[k].shape[1] > reduce_timesteps_to:
+            data_dict[k] = data_dict[k][:, 0:reduce_timesteps_to, :]
+
       return data_dict
   except IOError:
     print("Cannot open %s for reading." % data_fname)
@@ -243,7 +252,7 @@ def write_datasets(data_path, data_fname_stem, dataset_dict, compression=None):
     write_data(full_name_stem + "_" + s, data_dict, compression=compression)
 
 
-def read_datasets(data_path, data_fname_stem):
+def read_datasets(data_path, data_fname_stem, reduce_timesteps_to=None):
   """Read dataset sin HD5F format.
 
   This function assumes the dataset_dict is a mapping ( string ->
@@ -253,6 +262,7 @@ def read_datasets(data_path, data_fname_stem):
   Args:
     data_path: The path to the save directory.
     data_fname_stem: The filename stem of the file in which to write the data.
+    reduce_timesteps_to: For debugging, keep only first N timesteps
   """
 
   dataset_dict = {}
@@ -261,7 +271,7 @@ def read_datasets(data_path, data_fname_stem):
   print ('loading data from ' + data_path + ' with stem ' + data_fname_stem)
   for fname in fnames:
     if fname.startswith(data_fname_stem):
-      data_dict = read_data(os.path.join(data_path,fname))
+      data_dict = read_data(os.path.join(data_path,fname), reduce_timesteps_to)
       idx = len(data_fname_stem) + 1
       key = fname[idx:]
       data_dict['data_dim'] = data_dict['train_data'].shape[2]

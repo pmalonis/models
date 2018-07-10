@@ -358,65 +358,71 @@ class LFADS(object):
       used_in_factors_dim = factors_dim
       in_identity_if_poss = False
 
-    for d, name in enumerate(dataset_names):
-      data_dim = hps.dataset_dims[name]
-      in_mat_cxf = None
-      in_bias_1xf = None
-      align_bias_1xc = None
+    with tf.variable_scope("readin"):
+      for d, name in enumerate(dataset_names):
+        data_dim = hps.dataset_dims[name]
+        in_mat_cxf = None
+        in_bias_1xf = None
+        align_bias_1xc = None
 
-      if datasets and 'alignment_matrix_cxf' in datasets[name].keys():
-        dataset = datasets[name]
-        if hps.do_train_readin:
-            print("Initializing trainable readin matrix with alignment matrix" \
-                  " provided for dataset:", name)
+        if datasets and 'alignment_matrix_cxf' in datasets[name].keys():
+          dataset = datasets[name]
+          if hps.do_train_readin:
+              print("Initializing trainable readin matrix with alignment matrix" \
+                    " provided for dataset:", name)
+          else:
+              print("Setting non-trainable readin matrix to alignment matrix" \
+                    " provided for dataset:", name)
+          in_mat_cxf = dataset['alignment_matrix_cxf'].astype(np.float32)
+          if in_mat_cxf.shape != (data_dim, factors_dim):
+            raise ValueError("""Alignment matrix must have dimensions %d x %d
+            (data_dim x factors_dim), but currently has %d x %d."""%
+                             (data_dim, factors_dim, in_mat_cxf.shape[0],
+                              in_mat_cxf.shape[1]))
         else:
-            print("Setting non-trainable readin matrix to alignment matrix" \
-                  " provided for dataset:", name)
-        in_mat_cxf = dataset['alignment_matrix_cxf'].astype(np.float32)
-        if in_mat_cxf.shape != (data_dim, factors_dim):
-          raise ValueError("""Alignment matrix must have dimensions %d x %d
-          (data_dim x factors_dim), but currently has %d x %d."""%
-                           (data_dim, factors_dim, in_mat_cxf.shape[0],
-                            in_mat_cxf.shape[1]))
-      if datasets and 'alignment_bias_c' in datasets[name].keys():
-        dataset = datasets[name]
-        if hps.do_train_readin:
-          print("Initializing trainable readin bias with alignment bias " \
-                "provided for dataset:", name)
+          raise ValueError("alignment_matrix_cxf not found for dataset ", name)
+
+        if datasets and 'alignment_bias_c' in datasets[name].keys():
+          dataset = datasets[name]
+          if hps.do_train_readin:
+            print("Initializing trainable readin bias with alignment bias " \
+                  "provided for dataset:", name)
+          else:
+            print("Setting non-trainable readin bias to alignment bias " \
+                  "provided for dataset:", name)
+          align_bias_c = dataset['alignment_bias_c'].astype(np.float32)
+          align_bias_1xc = np.expand_dims(align_bias_c, axis=0)
+          if align_bias_1xc.shape[1] != data_dim:
+            raise ValueError("""Alignment bias must have dimensions %d
+            (data_dim), but currently has %d."""%
+                             (data_dim, in_mat_cxf.shape[0]))
+          if in_mat_cxf is not None and align_bias_1xc is not None:
+            # (data - alignment_bias) * W_in
+            # data * W_in - alignment_bias * W_in
+            # So b = -alignment_bias * W_in to accommodate PCA style offset.
+            in_bias_1xf = -np.dot(align_bias_1xc, in_mat_cxf)
         else:
-          print("Setting non-trainable readin bias to alignment bias " \
-                "provided for dataset:", name)
-        align_bias_c = dataset['alignment_bias_c'].astype(np.float32)
-        align_bias_1xc = np.expand_dims(align_bias_c, axis=0)
-        if align_bias_1xc.shape[1] != data_dim:
-          raise ValueError("""Alignment bias must have dimensions %d
-          (data_dim), but currently has %d."""%
-                           (data_dim, in_mat_cxf.shape[0]))
-        if in_mat_cxf is not None and align_bias_1xc is not None:
-          # (data - alignment_bias) * W_in
-          # data * W_in - alignment_bias * W_in
-          # So b = -alignment_bias * W_in to accommodate PCA style offset.
-          in_bias_1xf = -np.dot(align_bias_1xc, in_mat_cxf)
+          raise ValueError("alignment_bias_c not found for dataset ", name)
 
-      if hps.do_train_readin:
-          # only add to IO transformations collection only if we want it to be
-          # learnable, because IO_transformations collection will be trained
-          # when do_train_io_only
-          collections_readin=['IO_transformations']
-      else:
-          collections_readin=None
+        if hps.do_train_readin:
+            # only add to IO transformations collection only if we want it to be
+            # learnable, because IO_transformations collection will be trained
+            # when do_train_io_only
+            collections_readin=['IO_transformations']
+        else:
+            collections_readin=None
 
-      in_fac_lin = init_linear(data_dim, used_in_factors_dim,
-                               do_bias=True,
-                               mat_init_value=in_mat_cxf,
-                               bias_init_value=in_bias_1xf,
-                               identity_if_possible=in_identity_if_poss,
-                               normalized=False, name="x_2_infac_"+name,
-                               collections=collections_readin,
-                               trainable=hps.do_train_readin)
-      in_fac_W, in_fac_b = in_fac_lin
-      fns_in_fac_Ws[d] = makelambda(in_fac_W)
-      fns_in_fac_bs[d] = makelambda(in_fac_b)
+        in_fac_lin = init_linear(data_dim, used_in_factors_dim,
+                                 do_bias=True,
+                                 mat_init_value=in_mat_cxf,
+                                 bias_init_value=in_bias_1xf,
+                                 identity_if_possible=in_identity_if_poss,
+                                 normalized=False, name="x_2_infac_"+name,
+                                 collections=collections_readin,
+                                 trainable=hps.do_train_readin)
+        in_fac_W, in_fac_b = in_fac_lin
+        fns_in_fac_Ws[d] = makelambda(in_fac_W)
+        fns_in_fac_bs[d] = makelambda(in_fac_b)
 
     with tf.variable_scope("glm"):
       out_identity_if_poss = False
@@ -899,8 +905,8 @@ class LFADS(object):
     self.timed_kl_cost = kl_weight * self.kl_cost
     self.timed_l2_cost = l2_weight * self.l2_cost
     self.weight_corr_cost = hps.co_mean_corr_scale * self.corr_cost
-    self.cost = self.recon_cost + self.timed_kl_cost + \
-        self.timed_l2_cost + self.weight_corr_cost
+    self.cost = tf.add_n([self.recon_cost, self.timed_kl_cost,
+        self.timed_l2_cost, self.weight_corr_cost], name='cost')
 
     if kind != "train":
       # save every so often
@@ -1315,7 +1321,14 @@ class LFADS(object):
 
       feed_dict = self.build_feed_dict(name, data_bxtxd, ext_input_bxtxi,
                                        keep_prob=keep_prob)
+
+      if hps.debug_verbose:
+        print("Debug: dataset ", name, " : idx ", example_idxs)
+
       evaled_ops_np = session.run(ops_to_eval, feed_dict=feed_dict)
+      if np.isnan(evaled_ops_np[0]):
+        raise ValueError("Encountered NaN. Aborting")
+
       if do_collect:
         evaled_ops_list.append(evaled_ops_np)
 
