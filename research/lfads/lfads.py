@@ -796,14 +796,20 @@ class LFADS(object):
                             normalized=True, name="gen_2_fac")
       with tf.variable_scope("glm", reuse=True if t > 0 else None):
         if hps.output_dist == 'poisson':
-          log_rates_t = tf.add(tf.matmul(factors[t], this_out_fac_W, name='factors_times_readoutW'),
+          log_rates_t = tf.add(tf.matmul(factors[t], this_out_fac_W, 
+                               name='factors_times_readoutW'),
                                this_out_fac_b, name="log_rates_from_factors")
-          if hps.clip_log_rates_max is not None:
-            log_rates_t = tf.minimum(log_rates_t, hps.clip_log_rates_max, name="clip_log_rates_from_factors")
           log_rates_t.set_shape([None, None])
-          rates[t] = dist_params[t] = tf.exp(log_rates_t) # rates feed back
+          if hps.clip_log_rates_max is not None:
+            log_rates_clip = tf.minimum(log_rates_t, hps.clip_log_rates_max, 
+                    name="clip_log_rates_from_factors")
+          else:
+            log_rates_clip = log_rates_t
+          rates[t] = dist_params[t] = tf.exp(log_rates_clip) # rates feed back
           rates[t].set_shape([None, hps.dataset_dims[hps.dataset_names[0]]])
-          loglikelihood_t = Poisson(log_rates_t).logp(data_t_bxd)
+          loglikelihood_t = tf.subtract(Poisson(log_rates_clip).logp(data_t_bxd), 
+                                tf.nn.relu(log_rates_t - hps.clip_log_rates_max),
+                                name="log_likelihood_rates")
 
         elif hps.output_dist == 'gaussian':
           mean_n_logvars = tf.matmul(factors[t],this_out_fac_W) + this_out_fac_b
