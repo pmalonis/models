@@ -101,6 +101,7 @@ IC_POST_VAR_MIN = 0.0001      # protection from KL blowing up
 TF_DEBUG_CLI = False
 TF_DEBUG_TENSORBOARD = False
 TF_DEBUG_TENSORBOARD_HOSTPORT = 'localhost:6064'
+TF_DEBUG_DUMP_ROOT = ''
 DEBUG_VERBOSE = False
 DEBUG_REDUCE_TIMESTEPS_TO = None
 
@@ -418,6 +419,7 @@ flags.DEFINE_integer("l2_increase_steps", L2_INCREASE_STEPS,
 flags.DEFINE_boolean("tf_debug_cli", TF_DEBUG_CLI, "Whether to wrap tf.session in CLI tfdbg?")
 flags.DEFINE_boolean("tf_debug_tensorboard", TF_DEBUG_TENSORBOARD, "Whether to wrap tf.session in GUI Tensorboard debugger?")
 flags.DEFINE_string("tf_debug_tensorboard_hostport", TF_DEBUG_TENSORBOARD_HOSTPORT, "Host:Port of Tensorboard debugger")
+flags.DEFINE_string("tf_debug_dump_root", TF_DEBUG_DUMP_ROOT, "Location to dump TF debugging information")
 flags.DEFINE_boolean("debug_verbose", DEBUG_VERBOSE, "Whether to print verbose debugging information")
 flags.DEFINE_integer("debug_reduce_timesteps_to", DEBUG_REDUCE_TIMESTEPS_TO, "For debugging, artificially keep only this many timesteps to reduce graph size")
 FLAGS = flags.FLAGS
@@ -851,14 +853,21 @@ def main(_):
     config.gpu_options.allow_growth = True
   sess = tf.Session(config=config)
 
+  if not FLAGS.tf_debug_dump_root:
+    tf_debug_dump_root = None # use default if not specified
+  else:
+    tf_debug_dump_root = FLAGS.tf_debug_dump_root 
+
   if FLAGS.tf_debug_tensorboard:
     print("Using Tensorboard GUI debugger at " + FLAGS.tf_debug_tensorboard_hostport)
+    # note: code is too large to send via RPC as of TF 1.8
     sess = tf_debug.TensorBoardDebugWrapperSession(sess, FLAGS.tf_debug_tensorboard_hostport,
-                                                   send_traceback_and_source_code=False) # code is too large to send
+                                                   send_traceback_and_source_code=False,
+                                                   dump_root=tf_debug_dump_root)
 
   elif FLAGS.tf_debug_cli:
     print("Using CLI TF debugger")
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess, dump_root=tf_debug_dump_root)
     sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     sess.add_tensor_filter("has_bad_value", has_bad_value)
 

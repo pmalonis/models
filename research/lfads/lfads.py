@@ -1336,7 +1336,7 @@ class LFADS(object):
 
       evaled_ops_np = session.run(ops_to_eval, feed_dict=feed_dict)
       if np.isnan(evaled_ops_np[0]):
-        raise ValueError("Encountered NaN. Aborting")
+          print("Warning: Encountered NaN.")
 
       if do_collect:
         evaled_ops_list.append(evaled_ops_np)
