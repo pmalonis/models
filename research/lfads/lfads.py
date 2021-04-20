@@ -643,7 +643,8 @@ class LFADS(object):
                                           noise_variances,
                                           hps.do_train_prior_ar_atau,
                                           hps.do_train_prior_ar_nvar,
-                                          num_steps, "u_prior_ar1")
+                                          num_steps, "u_prior_ar1",
+                                          hps.ar_prior_dist)
 
     # CONTROLLER -> GENERATOR -> RATES
     # (u(t) -> gen(t) -> factors(t) -> rates(t) -> p(x_t|z_t) )

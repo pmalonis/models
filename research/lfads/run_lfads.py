@@ -69,6 +69,7 @@ NUM_STEPS_FOR_GEN_IC = MAX_INT # set to num_steps if greater than num_steps
 DATA_DIR = "/tmp/rnn_synth_data_v1.0/"
 DATA_FILENAME_STEM = "chaotic_rnn_inputs_g1p5"
 LFADS_SAVE_DIR = "/tmp/lfads_chaotic_rnn_inputs_g1p5/"
+AR_PRIOR_DIST = 'gaussian'
 CO_DIM = 1
 DO_CAUSAL_CONTROLLER = False
 DO_FEED_FACTORS_TO_CONTROLLER = True
@@ -200,6 +201,8 @@ flags.DEFINE_float("gen_cell_rec_weight_scale", GEN_CELL_REC_WEIGHT_SCALE,
 # following values to the same thing: ic_prior_var_min,
 # ic_prior_var_scale, ic_prior_var_max.  The prior mean will be
 # learned regardless.
+flags.DEFINE_string("ar_prior_dist", AR_PRIOR_DIST, 
+                    "Distribution to use for autoregressive prior")
 flags.DEFINE_float("ic_prior_var_min", IC_PRIOR_VAR_MIN,
                    "Minimum variance in posterior h0 codes.")
 flags.DEFINE_float("ic_prior_var_scale", IC_PRIOR_VAR_SCALE,
@@ -534,6 +537,7 @@ def build_hyperparameter_dict(flags):
   d['gen_cell_input_weight_scale'] = flags.gen_cell_input_weight_scale
   d['gen_cell_rec_weight_scale'] = flags.gen_cell_rec_weight_scale
   # KL distributions
+  d['ar_prior_dist'] = flags.ar_prior_dist
   d['ic_prior_var_min'] = flags.ic_prior_var_min
   d['ic_prior_var_scale'] = flags.ic_prior_var_scale
   d['ic_prior_var_max'] = flags.ic_prior_var_max
@@ -543,6 +547,7 @@ def build_hyperparameter_dict(flags):
   d['prior_ar_nvar'] =  flags.prior_ar_nvar
   d['do_train_prior_ar_atau'] = flags.do_train_prior_ar_atau
   d['do_train_prior_ar_nvar'] = flags.do_train_prior_ar_nvar
+
   # Controller
   d['do_causal_controller'] = flags.do_causal_controller
   d['controller_input_lag'] = flags.controller_input_lag

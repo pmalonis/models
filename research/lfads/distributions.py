@@ -179,47 +179,47 @@ class DiagonalLaplace(Gaussian):
     return diag_laplace_log_likelihood(z, self.mean, self.logvar)
 
 
-# class DiagonalGaussian(Gaussian):
-#   """Diagonal Gaussian with different constant mean and variances in each
-#   dimension.
-#   """
+class DiagonalGaussian(Gaussian):
+  """Diagonal Gaussian with different constant mean and variances in each
+  dimension.
+  """
 
-#   def __init__(self, batch_size, z_size, mean, logvar):
-#     """Create a diagonal gaussian distribution.
+  def __init__(self, batch_size, z_size, mean, logvar):
+    """Create a diagonal gaussian distribution.
 
-#     Args:
-#       batch_size: The size of the batch, i.e. 0th dim in 2D tensor of samples.
-#       z_size: The dimension of the distribution, i.e. 1st dim in 2D tensor.
-#       mean: The N-D mean of the distribution.
-#       logvar: The N-D log variance of the diagonal distribution.
-#     """
-#     size__xz = [None, z_size]
-#     self.mean = mean            # bxn already
-#     self.logvar = logvar        # bxn already
-#     self.noise = noise = tf.random_normal(tf.shape(logvar))
-#     self.sample = mean + tf.exp(0.5 * logvar) * noise
-#     mean.set_shape(size__xz)
-#     logvar.set_shape(size__xz)
-#     self.sample.set_shape(size__xz)
+    Args:
+      batch_size: The size of the batch, i.e. 0th dim in 2D tensor of samples.
+      z_size: The dimension of the distribution, i.e. 1st dim in 2D tensor.
+      mean: The N-D mean of the distribution.
+      logvar: The N-D log variance of the diagonal distribution.
+    """
+    size__xz = [None, z_size]
+    self.mean = mean            # bxn already
+    self.logvar = logvar        # bxn already
+    self.noise = noise = tf.random_normal(tf.shape(logvar))
+    self.sample = mean + tf.exp(0.5 * logvar) * noise
+    mean.set_shape(size__xz)
+    logvar.set_shape(size__xz)
+    self.sample.set_shape(size__xz)
 
-#   def logp(self, z=None):
-#     """Compute the log-likelihood under the distribution.
+  def logp(self, z=None):
+    """Compute the log-likelihood under the distribution.
 
-#     Args:
-#       z (optional): value to compute likelihood for, if None, use sample.
+    Args:
+      z (optional): value to compute likelihood for, if None, use sample.
 
-#     Returns:
-#       The likelihood of z under the model.
-#     """
-#     if z is None:
-#       z = self.sample
+    Returns:
+      The likelihood of z under the model.
+    """
+    if z is None:
+      z = self.sample
 
-#     # This is needed to make sure that the gradients are simple.
-#     # The value of the function shouldn't change.
-#     if z == self.sample:
-#       return gaussian_pos_log_likelihood(self.mean, self.logvar, self.noise)
+    # This is needed to make sure that the gradients are simple.
+    # The value of the function shouldn't change.
+    if z == self.sample:
+      return gaussian_pos_log_likelihood(self.mean, self.logvar, self.noise)
 
-#     return diag_gaussian_log_likelihood(z, self.mean, self.logvar)
+    return diag_gaussian_log_likelihood(z, self.mean, self.logvar)
 
 
 class LearnableDiagonalGaussian(Gaussian):
@@ -389,7 +389,7 @@ class LearnableAutoRegressive1Prior(GaussianProcess):
   def __init__(self, batch_size, z_size,
                autocorrelation_taus, noise_variances,
                do_train_prior_ar_atau, do_train_prior_ar_nvar,
-               num_steps, name):
+               num_steps, name, ar_prior_dist):
     """Create a learnable autoregressive (1) process.
 
     Args:
@@ -405,6 +405,8 @@ class LearnableAutoRegressive1Prior(GaussianProcess):
       num_steps: Number of steps to run the process.
       name: The name to prefix to learned TF variables.
     """
+
+    self.ar_prior_dist = ar_prior_dist
 
     # Note the use of the plural in all of these quantities.  This is intended
     # to mark that even though a sample z_t from the posterior is thought of a
@@ -449,27 +451,29 @@ class LearnableAutoRegressive1Prior(GaussianProcess):
     # process mean (zero but included in for completeness)
     self.pmeans_bxu = pmeans_bxu = tf.zeros_like(phis_bxu)
 
-    # For sampling from the prior during de-novo generation.
-    self.means_t = means_t = [None] * num_steps
-    self.logvars_t = logvars_t = [None] * num_steps
-    self.samples_t = samples_t = [None] * num_steps
-    self.gaussians_t = gaussians_t = [None] * num_steps
-    sample_bxu = tf.zeros_like(phis_bxu)
-    for t in range(num_steps):
-      # process variance used here to make process completely stationary
-      if t == 0:
-        logvar_pt_bxu = self.logpvars_bxu
-      else:
-        logvar_pt_bxu = self.logevars_bxu
+    #For sampling from the prior during de-novo generation.
+    #commenting out because I don't know if this should be used with laplace prior
 
-      z_mean_pt_bxu = pmeans_bxu + phis_bxu * sample_bxu
-      gaussians_t[t] = DiagonalLaplace(batch_size, z_size,
-                                        mean=z_mean_pt_bxu,
-                                        logvar=logvar_pt_bxu)
-      sample_bxu = gaussians_t[t].sample
-      samples_t[t] = sample_bxu
-      logvars_t[t] = logvar_pt_bxu
-      means_t[t] = z_mean_pt_bxu
+    # self.means_t = means_t = [None] * num_steps
+    # self.logvars_t = logvars_t = [None] * num_steps
+    # self.samples_t = samples_t = [None] * num_steps
+    # self.gaussians_t = gaussians_t = [None] * num_steps
+    # sample_bxu = tf.zeros_like(phis_bxu)
+    # for t in range(num_steps):
+    #   # process variance used here to make process completely stationary
+    #   if t == 0:
+    #     logvar_pt_bxu = self.logpvars_bxu
+    #   else:
+    #     logvar_pt_bxu = self.logevars_bxu
+
+    #   z_mean_pt_bxu = pmeans_bxu + phis_bxu * sample_bxu
+    #   gaussians_t[t] = DiagonalLaplace(batch_size, z_size,
+    #                                     mean=z_mean_pt_bxu,
+    #                                     logvar=logvar_pt_bxu)
+    #   sample_bxu = gaussians_t[t].sample
+    #   samples_t[t] = sample_bxu
+    #   logvars_t[t] = logvar_pt_bxu
+    #   means_t[t] = z_mean_pt_bxu
 
   def logp_t(self, z_t_bxu, z_tm1_bxu=None):
     """Compute the log-likelihood under the distribution for a given time t,
@@ -485,13 +489,22 @@ class LearnableAutoRegressive1Prior(GaussianProcess):
 
     """
     if z_tm1_bxu is None:
-      return diag_laplace_log_likelihood(z_t_bxu, self.pmeans_bxu,
-                                          self.logpvars_bxu)
+      if self.ar_prior_dist == 'laplace':
+        return diag_laplace_log_likelihood(z_t_bxu, self.pmeans_bxu,
+                                            self.logpvars_bxu)
+      elif self.ar_prior_dist == 'gaussian':
+        return diag_gaussian_log_likelihood(z_t_bxu, self.pmeans_bxu,
+                                            self.logpvars_bxu)
     else:
       means_t_bxu = self.pmeans_bxu + self.phis_bxu * z_tm1_bxu
-      logp_tgtm1_bxu = diag_laplace_log_likelihood(z_t_bxu,
-                                                    means_t_bxu,
-                                                    self.logevars_bxu)
+      if self.ar_prior_dist == 'laplace':
+        logp_tgtm1_bxu = diag_laplace_log_likelihood(z_t_bxu,
+                                                      means_t_bxu,
+                                                      self.logevars_bxu)
+      elif self.ar_prior_dist == 'gaussian':
+        logp_tgtm1_bxu = diag_laplace_log_likelihood(z_t_bxu,
+                                                      means_t_bxu,
+                                                      self.logevars_bxu)
       return logp_tgtm1_bxu
 
 
